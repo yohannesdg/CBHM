@@ -1,0 +1,22 @@
+{
+  "_comment": "Volta Basin configuration. Gauge coordinates are approximate. area_km2 is a snapping hint: Bamboi, Nawuni and Senchi use the GRDC catchment areas (GRDC 1531100, 1531450, 1531700). GRDC's Oti station is Sabari (1531800, 58,670 km2), downstream of Saboba.",
+  "name": "Volta Basin",
+  "bbox": {"west": -5.6, "east": 2.6, "south": 5.5, "north": 14.8},
+  "resolution_deg": 0.05,
+  "outlet": {"name": "Volta estuary (Ada)", "lon": 0.63, "lat": 5.80, "area_km2": 400000},
+  "period": {"start": "1981-01", "end": "2023-12"},
+  "calibration": {"start": "1983-01", "end": "2005-12"},
+  "validation": {"start": "2006-01", "end": "2023-12"},
+  "gauges": [
+    {"name": "Bamboi",  "river": "Black Volta", "lon": -2.03, "lat": 8.15, "area_km2": 134200},
+    {"name": "Nawuni",  "river": "White Volta", "lon": -1.08, "lat": 9.70, "area_km2": 92950},
+    {"name": "Saboba",  "river": "Oti",         "lon":  0.33, "lat": 9.71, "area_km2": null},
+    {"name": "Senchi (below Akosombo)", "river": "Volta", "lon": 0.10, "lat": 6.20, "area_km2": 394100}
+  ],
+  "sources": {
+    "precip": "CHIRPS v2.0 monthly 0.05 deg (Funk et al., 2015), IRI Data Library subset",
+    "temperature": "TerraClimate monthly tmax/tmin 1/24 deg (Abatzoglou et al., 2018), NCSS subset",
+    "dem": "HydroSHEDS v1 30 arc-second void-filled DEM, Africa",
+    "pet": "Modified Hargreaves (Droogers & Allen, 2002)"
+  }
+}

@@ -1,0 +1,41 @@
+[
+ {
+  "id": "r1a153e778a0",
+  "label": "Climate scenario 1",
+  "created": "2026-10-19 14:24",
+  "model": "nam",
+  "model_label": "NAM (monthly)",
+  "params": {
+   "model": "nam",
+   "global": {
+    "umax": 15.0,
+    "lmax": 300.0,
+    "cqof": 0.4,
+    "ckif": 1.0,
+    "tof": 0.3,
+    "tif": 0.3,
+    "tg": 0.2,
+    "ckbf": 6.0,
+    "kc": 1.0
+   },
+   "zones": {},
+   "kw": 1.05,
+   "k_route": 0.0
+  },
+  "climate": {
+   "rain_pct": -10.0,
+   "temp_c": 2.0,
+   "pet_pct": 0.0
+  },
+  "climate_label": "rain -10%, temp +2\u00b0C",
+  "note": "",
+  "summary": {
+   "P": 921.7681811369742,
+   "ET": 779.9637287491956,
+   "Q": 141.30561175917782,
+   "runoff_ratio": 0.15329842649252814,
+   "median_kge": null,
+   "gauges_scored": 0
+  }
+ }
+]

@@ -1,0 +1,18 @@
+# Faster: conda env create -f environment.yml --solver=libmamba   (or just use setup_and_run.bat, which uses pip)
+name: volta-hydro
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.11
+  - numpy>=1.24
+  - scipy>=1.10
+  - numba>=0.58
+  - fastapi>=0.110
+  - uvicorn>=0.27
+  - python-multipart
+  - xarray>=2023.1
+  - netcdf4
+  - rasterio>=1.3
+  - pytest
+  - httpx

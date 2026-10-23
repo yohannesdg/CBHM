@@ -1,0 +1,5 @@
+# Tests:  python -m pytest
+-r requirements.txt
+-r requirements-prep.txt
+pytest
+httpx

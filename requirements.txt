@@ -1,0 +1,6 @@
+# Core packages for the model and web app.
+# setup_and_run.bat first looks for a Python that already has these and uses it as-is.
+numpy>=1.21
+scipy>=1.7
+fastapi>=0.100
+uvicorn>=0.23

@@ -1,0 +1,5 @@
+# Data preparation (prep/prep_volta.py). Small pure-Python readers; numpy/scipy do the rest.
+tifffile
+pyshp
+# Optional, only for other formats (NetCDF-4 files, reprojected rasters):
+#   xarray netCDF4 rasterio

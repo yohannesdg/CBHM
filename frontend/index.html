@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Basin Water Balance</title>
+<link rel="stylesheet" href="vendor/fonts/archivo.css">
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="styles.css">
+<script>
+  // apply the saved theme and layout before the page paints
+  try {
+    var t = localStorage.getItem("volta-theme"), l = localStorage.getItem("volta-layout");
+    if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+    document.documentElement.dataset.layout = (l === "data" || l === "charts") ? l : "map";
+  } catch (e) {}
+</script>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <svg viewBox="0 0 32 32" aria-hidden="true" class="mark"><path d="M3 6c6 0 7 6 13 6s7-6 13-6M3 14c6 0 7 6 13 6s7-6 13-6M9 22c3 0 4 4 7 4s4-4 7-4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+    <div>
+      <h1>Basin water balance</h1>
+      <p id="subtitle">Distributed monthly model with abcd soil water and Modified Hargreaves PET</p>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <span id="synthBadge" class="badge warn" hidden>Synthetic demo data</span>
+    <span id="runInfo" class="muted"></span>
+    <div class="layout-pick" id="layoutPick" role="radiogroup" aria-label="Dashboard layout">
+      <button type="button" data-layout="data" aria-pressed="false" title="Data focus: wide panel for parameters, calibration and data">
+        <svg viewBox="0 0 36 24" aria-hidden="true"><rect x="1" y="1" width="13" height="22" class="m"/><rect x="15" y="1" width="11" height="22"/><rect x="27" y="1" width="8" height="22"/></svg>
+        <span>Data focus</span></button>
+      <button type="button" data-layout="map" aria-pressed="true" title="Map focus: large map">
+        <svg viewBox="0 0 36 24" aria-hidden="true"><rect x="1" y="1" width="6" height="22"/><rect x="8" y="1" width="19" height="22" class="m"/><rect x="28" y="1" width="7" height="22"/></svg>
+        <span>Map focus</span></button>
+      <button type="button" data-layout="charts" aria-pressed="false" title="Chart focus: wide results with charts and tables">
+        <svg viewBox="0 0 36 24" aria-hidden="true"><rect x="1" y="1" width="6" height="22"/><rect x="8" y="1" width="9" height="22"/><rect x="18" y="1" width="17" height="22" class="m"/></svg>
+        <span>Chart focus</span></button>
+    </div>
+    <button type="button" class="btn ghost theme-toggle" id="themeToggle" aria-label="Switch to dark theme" title="Switch to dark theme">
+      <svg class="i-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" fill="currentColor"/></svg>
+      <svg class="i-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2" fill="currentColor"/><g stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></g></svg>
+      <span id="themeLabel">Dark</span>
+    </button>
+    <details class="menu">
+      <summary class="btn ghost">Export</summary>
+      <div class="menu-list">
+        <a href="/api/export/gauges.csv">Gauge series (CSV)</a>
+        <a href="/api/export/basin.csv">Basin balance, monthly (CSV)</a>
+        <a href="/api/export/annual.csv">Annual volumes in MCM (CSV)</a>
+        <a href="/api/export/params.json">Parameters (JSON)</a>
+        <a id="exportMap" href="/api/export/map.asc">Current map (ASCII grid)</a>
+      </div>
+    </details>
+  </div>
+</header>
+
+<main class="layout">
+  <!-- ======================= controls ======================= -->
+  <aside class="controls">
+    <nav class="tabs steps" role="tablist" aria-label="Workflow">
+      <button role="tab" aria-selected="false" data-tab="basins"><b class="n" aria-hidden="true">1</b><span class="t">Basin</span><span class="st" id="st-basins"></span></button>
+      <button role="tab" aria-selected="false" data-tab="data"><b class="n" aria-hidden="true">2</b><span class="t">Gauges</span><span class="st" id="st-data"></span></button>
+      <button role="tab" aria-selected="true" data-tab="params"><b class="n" aria-hidden="true">3</b><span class="t">Model</span><span class="st" id="st-params"></span></button>
+      <button role="tab" aria-selected="false" data-tab="calib"><b class="n" aria-hidden="true">4</b><span class="t">Calibrate</span><span class="st" id="st-calib"></span></button>
+    </nav>
+
+    <section class="tabpanel" id="tab-basins" hidden>
+      <p class="hint">Pick any river basin in Africa from the HydroSHEDS HydroBASINS outlines. The model downloads rainfall and temperature for that basin and opens its dashboard.</p>
+      <div id="catalogMissing" hidden>
+        <p class="hint">The basin outlines (HydroBASINS Africa) haven't been downloaded yet. This is a one-time download; it resumes if the connection drops.</p>
+        <button class="btn primary" id="catalogBuildBtn">Download basin outlines</button>
+      </div>
+      <div id="catalogReady" hidden>
+        <label class="field level-field" for="levelSlider"><span>Sub-basin level <b id="levelOut">3</b></span>
+          <input type="range" id="levelSlider" min="2" max="5" step="1" value="3" aria-describedby="levelHint">
+          <span class="ticks4" aria-hidden="true"><span>2</span><span>3</span><span>4</span><span>5</span></span>
+          <span class="ticks4 sub" aria-hidden="true"><span>Largest</span><span></span><span></span><span>Smallest</span></span>
+        </label>
+        <p class="hint" id="levelHint"></p>
+        <label class="check"><input type="checkbox" id="upstreamChk" checked> Include everything upstream (the whole catchment)</label>
+        <div id="basinPick" class="pick"><p class="hint">Click a basin on the map.</p></div>
+      </div>
+      <div id="jobBox" class="progress" hidden><div class="bar"></div><p class="jobmsg"></p>
+        <details class="joblog"><summary>Details</summary><pre id="jobLog"></pre></details>
+        <button class="btn ghost" id="jobCancelBtn" hidden>Cancel</button></div>
+      <h3>Prepared basins</h3>
+      <div id="preparedList" class="prepared"></div>
+    </section>
+
+    <section class="tabpanel" id="tab-params">
+      <div class="field model-pick">
+        <span>Water-balance model</span>
+        <div class="seg" id="modelSeg" role="radiogroup" aria-label="Water-balance model"></div>
+        <p class="hint" id="modelHint"></p>
+      </div>
+      <label class="field">
+        <span>Edit parameters for</span>
+        <select id="zoneSelect"></select>
+      </label>
+      <p class="hint" id="zoneHint"></p>
+      <div id="sliders"></div>
+      <h3>Whole basin</h3>
+      <div id="globalSliders"></div>
+      <div class="param-actions">
+        <button class="btn primary" id="runBtn">Run model</button>
+        <button class="btn ghost" id="undoBtn" disabled title="Go back to the previous parameter values">Undo</button>
+        <button class="btn ghost" id="resetZoneBtn">Reset zone</button>
+        <button class="btn ghost danger" id="resetAllBtn" title="Every zone and basin value back to its default">Reset all</button>
+      </div>
+      <label class="check"><input type="checkbox" id="autoRun" checked> Run automatically when a slider changes</label>
+      <p class="hint legend-dot"><span class="dot" aria-hidden="true"></span> marks a value changed from its default.</p>
+      <h3>Saved runs</h3>
+      <p class="hint">Keep the current parameters under a name, then compare any saved run with the current one on the hydrograph.</p>
+      <form class="run-save" id="runSaveForm">
+        <input type="text" id="runName" maxlength="80" placeholder="Name, e.g. deeper soils north" aria-label="Name for this run">
+        <button class="btn" type="submit">Save run</button>
+      </form>
+      <ul class="runs" id="runList"></ul>
+    </section>
+
+    <section class="tabpanel" id="tab-calib" hidden>
+      <p class="hint" id="calNoGauge" hidden><b>This basin has no observed discharge.</b> Calibration needs gauge records; build the dataset with <code>--qobs</code> to add them.</p>
+      <p class="hint">Calibrates each gauge's own sub-catchment with differential evolution, working downstream from the headwater gauges. Upstream gauges keep their calibrated values.</p>
+      <fieldset class="field">
+        <legend>Parameters to fit</legend>
+        <div class="chips" id="calNames"></div>
+      </fieldset>
+      <label class="field"><span>Objective</span>
+        <select id="calObjective">
+          <option value="kge">KGE</option>
+          <option value="nse">NSE</option>
+          <option value="log_nse">log-NSE (low flows)</option>
+          <option value="kge_lognse">½ KGE + ½ log-NSE</option>
+        </select>
+      </label>
+      <div class="row2">
+        <label class="field"><span>Calibration from</span><input id="calStart" type="month"></label>
+        <label class="field"><span>to</span><input id="calEnd" type="month"></label>
+      </div>
+      <div class="row2">
+        <label class="field"><span>Generations</span><input id="calIter" type="number" min="5" max="300" value="30"></label>
+        <label class="field"><span>Population ×</span><input id="calPop" type="number" min="4" max="50" value="10"></label>
+      </div>
+      <fieldset class="field">
+        <legend>Gauges</legend>
+        <div class="chips" id="calGauges"></div>
+      </fieldset>
+      <div class="row">
+        <button class="btn primary" id="calStartBtn">Start calibration</button>
+        <button class="btn ghost" id="calCancelBtn" disabled>Cancel</button>
+      </div>
+      <div id="calProgress" class="progress" hidden><div class="bar"></div><p class="muted"></p></div>
+      <div id="calLog"></div>
+      <button class="btn primary" id="calApplyBtn" hidden>Use calibrated parameters</button>
+    </section>
+
+    <section class="tabpanel" id="tab-data" hidden>
+      <label class="field"><span>Dataset</span><select id="datasetSelect"></select></label>
+      <div class="row"><button class="btn" id="loadBtn">Load dataset</button></div>
+      <h3>Demo basin</h3>
+      <p class="hint">Builds a synthetic Volta-shaped basin with 1981–2022 forcing and gauge records, so you can try the tools before the real data is ready.</p>
+      <div class="row">
+        <button class="btn" data-synth="0.05">Build demo at 0.05°</button>
+        <button class="btn ghost" data-synth="0.1">at 0.1°</button>
+      </div>
+      <h3>Prepared dataset</h3>
+      <p class="hint">Run <code>python prep/prep_volta.py all</code> to build <code>data/volta.npz</code> from CHIRPS, TerraClimate and your DEM, then load it here or upload the file.</p>
+      <label class="btn ghost file"><input type="file" id="uploadInput" accept=".npz">Upload .npz</label>
+      <h3>Open gauge records (ADHI)</h3>
+      <p class="hint">Monthly discharge for 1,466 African gauging stations from the African Database of Hydrometric Indices (Tramblay et al., 2021, CC BY 4.0). Downloaded once, about 7 MB. Stations inside this basin are matched to the model's rivers by location and catchment area.</p>
+      <button class="btn" id="adhiBtn" type="button">Find open gauge records</button>
+      <p class="hint" id="adhiStatus" aria-live="polite"></p>
+      <div id="adhiList" class="adhi-list"></div>
+      <h3>Observed discharge from a file</h3>
+      <p class="hint">Add gauge records to compare with the model and calibrate. Use a CSV with a <code>date</code> column (YYYY-MM or YYYY-MM-DD) and one column per gauge named as in the gauge list, in m³/s, or a GRDC export file for one station. Daily values are averaged to months.</p>
+      <label class="field"><span>Gauge for a single-station file</span><select id="obsGauge"><option value="">Match by column or station name</option></select></label>
+      <label class="btn ghost file"><input type="file" id="obsInput" accept=".csv,.txt">Add observed discharge</label>
+      <p class="hint" id="obsStatus"></p>
+      <h3>About this dataset</h3>
+      <dl id="metaList" class="meta"></dl>
+    </section>
+  </aside>
+
+  <!-- ======================= map ======================= -->
+  <section class="mapcol">
+    <div class="mapbar">
+      <label class="field inline"><span>Layer</span>
+        <select id="layerSelect">
+          <optgroup label="Fluxes and states">
+            <option value="precip">Rainfall (CHIRPS)</option>
+            <option value="pet">PET (Modified Hargreaves)</option>
+            <option value="et">Actual ET</option>
+            <option value="runoff" selected>Runoff</option>
+            <option value="recharge">Groundwater recharge</option>
+            <option value="baseflow">Baseflow</option>
+            <option value="soil">Soil moisture</option>
+            <option value="gw">Groundwater storage</option>
+            <option value="discharge">Discharge (routed)</option>
+          </optgroup>
+          <optgroup label="Basin">
+            <option value="static:dem">Elevation</option>
+            <option value="static:acc">Upstream area</option>
+            <option value="static:zone">Parameter zones</option>
+            <option value="static:lake">Open water</option>
+          </optgroup>
+        </select>
+      </label>
+      <div class="seg" id="modeSeg" role="radiogroup" aria-label="Time aggregation">
+        <button data-mode="annual" aria-pressed="true">Mean annual</button>
+        <button data-mode="clim" aria-pressed="false">Calendar month</button>
+        <button data-mode="month" aria-pressed="false">Single month</button>
+        <button data-mode="anomaly" aria-pressed="false">Anomaly</button>
+      </div>
+      <select id="climMonth" hidden aria-label="Calendar month"></select>
+      <label class="field inline opacity"><span>Opacity</span><input type="range" id="opacity" min="20" max="100" step="5" value="80" aria-label="Model layer opacity"></label>
+    </div>
+    <div class="mapwrap">
+      <div id="map"></div>
+      <div class="legend" id="legend"></div>
+      <div class="readout" id="readout" hidden></div>
+    </div>
+    <div class="ribbon-wrap">
+      <button class="btn icon" id="playBtn" aria-label="Play through months">▶</button>
+      <div class="ribbon-box">
+        <canvas id="ribbon" height="34"></canvas>
+        <div class="ribbon-label"><span id="ribbonDate"></span><span class="muted">Basin rainfall each month. Click or drag to pick one.</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= results ======================= -->
+  <section class="results">
+    <div class="kpis" id="kpis" aria-label="Water balance summary">
+      <div class="balance" id="balance"></div>
+      <div class="fitstrip" id="fitStrip" role="group" aria-label="Fit at each gauge (KGE)"></div>
+    </div>
+    <div class="rtabs-bar">
+      <nav class="rtabs" role="tablist" aria-label="Results">
+        <button role="tab" aria-selected="true" data-group="flows">Flows</button>
+        <button role="tab" aria-selected="false" data-group="balance">Water balance</button>
+        <button role="tab" aria-selected="false" data-group="scenario">Scenarios</button>
+        <button role="tab" aria-selected="false" data-group="cell">Cell</button>
+      </nav>
+      <div class="seg small subtabs" id="subtabs" role="tablist" aria-label="View"></div>
+    </div>
+
+    <div class="rpanel" id="rtab-hydro" role="tabpanel">
+      <div class="panel-head">
+        <label class="field inline" id="gaugeField"><span>Gauge</span><select id="gaugeSelect"></select></label>
+        <h2 id="outletTitle" hidden>Simulated outflow at the basin outlet</h2>
+        <div class="seg small" id="unitSeg" role="radiogroup" aria-label="Time step and unit">
+          <button data-unit="month" aria-pressed="true">Monthly m³/s</button>
+          <button data-unit="year" aria-pressed="false">Annual MCM</button>
+        </div>
+        <label class="field inline cmp-pick"><span>Compare with</span><select id="cmpSelect"></select></label>
+        <div class="seg small" id="rangeSeg">
+          <button data-range="all" aria-pressed="true">All</button>
+          <button data-range="cal" aria-pressed="false">Calibration</button>
+          <button data-range="val" aria-pressed="false">Validation</button>
+        </div>
+      </div>
+      <div class="hydro-body">
+        <div class="chart grow"><canvas id="hydroChart"></canvas></div>
+        <div class="metrics-col"><table class="metrics" id="metricsTable"></table>
+          <table class="metrics cmp" id="cmpTable" hidden></table></div>
+      </div>
+    </div>
+
+    <div class="rpanel" id="rtab-partition" role="tabpanel" hidden>
+      <div class="panel-head">
+        <h2 id="partTitle">Where the rainfall goes</h2>
+        <label class="field inline"><span>Area</span><select id="partZone"></select></label>
+      </div>
+      <p class="hint" id="partHint">Inner ring: the first split of rainfall. Outer ring: the same water in more detail. Long-term means over the whole model period.</p>
+      <div class="part-body">
+        <div class="donut"><canvas id="partChart" aria-label="Rainfall partition chart"></canvas><div class="donut-c" id="partCenter"></div></div>
+        <table class="parttable" id="partTable"></table>
+      </div>
+      <div id="shareBlock">
+        <div class="panel-head share-head">
+          <h2>Share by sub-basin</h2>
+          <label class="field inline"><span>Of</span><select id="shareVar">
+            <option value="precip">Rainfall</option><option value="et">Evaporation</option>
+            <option value="runoff">Streamflow generated</option><option value="recharge">Groundwater recharge</option>
+          </select></label>
+        </div>
+        <div class="part-body">
+          <div class="donut small"><canvas id="shareChart" aria-label="Share by sub-basin chart"></canvas><div class="donut-c" id="shareCenter"></div></div>
+          <table class="parttable" id="shareTable"></table>
+        </div>
+      </div>
+    </div>
+
+    <div class="rpanel" id="rtab-scenario" role="tabpanel" hidden>
+      <div class="panel-head"><h2>Climate scenario</h2></div>
+      <p class="hint">Change rainfall and temperature and compare with the current run, using the same model and parameters. Warmer air raises potential evaporation through the Modified Hargreaves formula.</p>
+      <div class="scn-controls">
+        <div class="slider"><div class="top"><span class="name"><label for="scnRain">Rainfall change</label></span><output id="scnRainOut"></output></div>
+          <input type="range" id="scnRain" min="-30" max="30" step="1" value="0"></div>
+        <div class="slider"><div class="top"><span class="name"><label for="scnTemp">Temperature change</label></span><output id="scnTempOut"></output></div>
+          <input type="range" id="scnTemp" min="0" max="4" step="0.1" value="0"></div>
+        <details class="scn-more"><summary>Extra PET change</summary>
+          <div class="slider"><div class="top"><span class="name"><label for="scnPet">PET change on top of warming</label></span><output id="scnPetOut"></output></div>
+            <input type="range" id="scnPet" min="-20" max="20" step="1" value="0"></div></details>
+        <div class="scn-presets" role="group" aria-label="Scenario presets">
+          <button type="button" class="btn ghost small" data-preset="-10,2">Drier and hotter (−10 %, +2 °C)</button>
+          <button type="button" class="btn ghost small" data-preset="10,2">Wetter and hotter (+10 %, +2 °C)</button>
+          <button type="button" class="btn ghost small" data-preset="0,2">Hotter only (+2 °C)</button>
+          <button type="button" class="btn ghost small" data-preset="-20,3">Severe (−20 %, +3 °C)</button>
+        </div>
+        <div class="scn-run"><button type="button" class="btn primary" id="scnRun">Run scenario</button>
+          <button type="button" class="btn ghost" id="scnSave" hidden title="Keep this scenario as a saved run to compare on the hydrograph">Save as run</button>
+          <a class="btn ghost" id="scnExport" href="/api/export/scenario.csv" hidden>Monthly flows (CSV)</a></div>
+      </div>
+      <p class="scn-summary" id="scnSummary" aria-live="polite"></p>
+      <div id="scnOut" hidden>
+        <table class="metrics scn-table" id="scnTable"></table>
+        <h3>Mean flow by calendar month at the outlet</h3>
+        <div class="chart"><canvas id="scnSeason"></canvas></div>
+        <h3>Yearly outflow volume</h3>
+        <div class="chart"><canvas id="scnAnnual"></canvas></div>
+        <h3>Mean flow at each gauge</h3>
+        <table class="metrics scn-table" id="scnGauges"></table>
+      </div>
+    </div>
+
+    <div class="rpanel" id="rtab-subbasins" role="tabpanel" hidden>
+      <p class="hint">Long-term means for each gauge's own sub-catchment (the area between it and the gauges upstream). Click a row to zoom to it and edit its parameters.</p>
+      <div class="tablewrap"><table class="subtable" id="subTable"></table></div>
+    </div>
+
+    <div class="rpanel" id="rtab-season" role="tabpanel" hidden>
+      <div class="panel-head"><h2>Mean seasonal cycle, basin average</h2></div>
+      <div class="chart grow"><canvas id="seasonChart"></canvas></div>
+    </div>
+
+    <div class="rpanel" id="rtab-cell" role="tabpanel" hidden>
+      <div class="panel-head"><h2 id="cellTitle">Cell</h2></div>
+      <p class="hint" id="cellHint">Click anywhere in the basin on the map to see that cell's water balance.</p>
+      <dl class="meta compact" id="cellMeta"></dl>
+      <div class="chart grow"><canvas id="cellChart"></canvas></div>
+    </div>
+  </section>
+</main>
+
+<div id="toast" role="status" aria-live="polite"></div>
+<div id="empty" class="empty" hidden>
+  <div>
+    <h2>No dataset loaded</h2>
+    <p>Build the demo basin to explore the model now, or prepare the real Volta dataset with <code>prep/prep_volta.py</code>.</p>
+    <div class="row" style="justify-content:center">
+      <button class="btn primary" id="emptyBasinsBtn">Pick an African basin</button>
+      <button class="btn" data-synth="0.05">Build demo basin</button>
+    </div>
+  </div>
+</div>
+
+<script src="vendor/leaflet/leaflet.js"></script>
+<script src="vendor/chart.umd.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

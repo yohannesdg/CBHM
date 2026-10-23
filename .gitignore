@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+data/*.npz
+data/raw/
+.pytest_cache/
+.venv/
+setup_log.txt
+.python_path.txt
