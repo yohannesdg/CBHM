@@ -1,22 +1,21 @@
-# Distributed monthly water-balance model: Volta and any African basin
+# CBHM: distributed monthly water-balance model for African river basins
 
-A grid-based (0.05°) monthly hydrologic model of the Volta Basin, with a Python back end
-(FastAPI + NumPy/Numba) and a browser front end (Leaflet + Chart.js, served locally).
+A grid-based monthly hydrologic model for any river basin in Africa, picked from the HydroSHEDS HydroBASINS outlines (levels 2–5). The grid cell size depends on the basin: 0.05° (about 5.5 km) for basins up to about 600,000 km², then 0.1°, 0.25° or 0.5°, so a basin has at most about 20,000 cells. It has a Python back end (FastAPI + NumPy/Numba) and a browser front end (Leaflet + Chart.js, served locally).
 
-* **Rainfall:** CHIRPS v2.0 monthly, 0.05°
-* **PET:** Modified Hargreaves (Droogers & Allen, 2002) from Tmax/Tmin (TerraClimate by default) and CHIRPS rainfall
-* **Soil and groundwater:** abcd model (Thomas, 1981), run in every cell
-* **Routing:** D8 flow directions from a priority-flood over the DEM, monthly accumulation to the gauges, optional linear-reservoir lag, open-water evaporation on Lake Volta cells
-* **Distributed parameters:** each gauge's own incremental sub-catchment is a parameter zone, calibrated with differential evolution from upstream to downstream
+* **Rainfall:** CHIRPS v2.0 monthly (0.05° source data, averaged to the model grid)
+* **PET:** Modified Hargreaves (Droogers & Allen, 2002) from Tmax/Tmin (TerraClimate) and CHIRPS rainfall
+* **Soil and groundwater:** two models to choose from, each run in every cell: abcd (Thomas, 1981) or NAM (Nielsen & Hansen, 1973), adapted to a monthly step
+* **Routing:** D8 flow directions from a priority-flood over the HydroSHEDS DEM, monthly accumulation to the gauges and the outlet, optional linear-reservoir lag, open-water evaporation on lake and reservoir cells
+* **Distributed parameters:** each gauge's own incremental sub-catchment (or each HydroBASINS unit, in an ungauged basin) is a parameter zone, calibrated with differential evolution from upstream to downstream
+* **Observed discharge:** open ADHI records for 1,466 African stations, GRDC exports or your own CSV
 * **Front end:**
-  * maps of any flux or state (mean annual, calendar month, a single month, or an anomaly)
-  * a rainfall-ribbon time scrubber
+  * a four-step workflow: Basin, Gauges, Model, Calibrate
+  * maps of any flux or state (mean annual, calendar month, a single month, or an anomaly), with a rainfall-ribbon time scrubber
   * simulated vs. observed hydrographs, monthly in m³/s or annual volumes in million m³ (MCM), with NSE, KGE, log-NSE, bias and R² for the calibration and validation periods
-  * the basin water balance and its closure check
-  * a **Water partition** tab: a two-ring pie of where the rainfall goes (evaporation from land and open water, soil storage, quickflow, recharge split into baseflow and groundwater storage) for the whole basin or any sub-basin, and a pie of each sub-basin's share of rainfall, evaporation, streamflow or recharge
-  * a **View** menu with three dashboard layouts (Map focus, Balanced, Charts focus) and a Light / Dark / Match system theme; both are remembered in the browser
-  * a cell inspector
-  * exports to CSV, JSON and ESRI ASCII grid
+  * the basin water balance and its closure check; a two-ring pie of where the rainfall goes, for the whole basin or any sub-basin
+  * climate scenarios, saved runs and model comparison
+  * three layouts (Data focus, Map focus, Chart focus) with draggable panel dividers, and a dark/light theme that also applies to the map; all remembered in the browser
+  * a cell inspector, and exports to CSV, JSON and ESRI ASCII grid
 
 ---
 
@@ -28,9 +27,9 @@ Double-click **`setup_and_run.bat`**. It:
 2. If none is ready, it builds `.venv` on top of the best Python found. The venv reuses that Python's packages and downloads only what is missing. pip's output goes to `setup_log.txt`.
 3. It remembers the chosen interpreter in `.python_path.txt`, prints a package check (`tools\check_env.py`), and starts the app.
 
-* `setup_and_run.bat prep` also installs xarray, netCDF4 and rasterio, which only `prep\prep_volta.py` needs.
+* `setup_and_run.bat prep` also installs xarray, netCDF4 and rasterio. They are optional: basin preparation uses them when present but doesn't need them.
 * `setup_and_run.bat rebuild` forgets the choice and searches again.
-* After setup, `run_app.bat` alone starts the app.
+* After setup, `run_app.bat` alone starts the app. The project folder can be renamed or moved; the scripts find their files relative to where they are.
 * numba is optional but makes runs and calibration about 10× faster. Double-click **`install_numba.bat`** (it uses the same Python as the app; about 45 MB, downloaded in resumable parts so a dropped connection doesn't start it over), then restart the app.
 * Tests: install `requirements-dev.txt`, then run `python -m pytest`.
 
@@ -42,87 +41,45 @@ conda env create -f environment.yml --solver=libmamba
 
 `environment.yml` already excludes the `defaults` channel. Mixing it with conda-forge is the usual cause of very long solves.
 If your conda is older than 23.10, run `conda install -n base conda-libmamba-solver` once.
-`run_app.bat` finds an env named `volta-hydro` automatically.
+`run_app.bat` finds the env it creates (named `volta-hydro`) automatically.
 
-## 2. Try it immediately with the demo basin
+## 2. Start the app
 
 ```bat
 run_app.bat
 ```
 
-The browser opens at <http://localhost:8000> once the server is ready. With no dataset in `data\`, the page offers **Build demo basin**.
-The demo is a *synthetic* basin shaped like the Volta: real-like geography and climate gradients, plus hidden "true"
-parameters that generate fake gauge records. It is only for learning the tools. The header shows
-"Synthetic demo data" while it is loaded.
+The browser opens at <http://localhost:8000> once the server is ready. Each start opens on step **1 Basin** in Map focus: the map of Africa with the basins at level 2 and no basin loaded. From there:
 
-## 3. Build the real Volta dataset
+* click a basin and press **Prepare and open** (section 3), or
+* pick a basin you prepared before under **Prepared basins**, or
+* build the **demo basin** (step 2, Gauges, under *Demo basin*) to try the tools first. It is a *synthetic* basin with realistic geography and climate gradients, plus hidden "true" parameters that generate made-up gauge records. The header shows "Synthetic demo data" while it is open.
 
-**Quick route:** double-click **`download_data.bat`**. It downloads everything below into `data\raw`, then builds `data\volta.npz`. Restart the app afterwards and it opens the real basin. If a download stops, run the file again: finished files are kept, and the DEM and lake downloads resume where they stopped.
+To open a prepared basin straight away instead, set `CBHM_AUTOLOAD=1` before `run_app.bat` (it opens the most recently prepared real basin), or set it to a file name in `data\`, such as `CBHM_AUTOLOAD=basin_L3_1030022420_0.1.npz`.
 
-| Data | Source | Size |
-|---|---|---|
-| CHIRPS v2.0 monthly rainfall, 0.05° | IRI Data Library subset of the Volta box | about 60 MB |
-| TerraClimate monthly Tmax and Tmin | University of Idaho THREDDS subsets | about 45 MB each |
-| HydroSHEDS v1 void-filled DEM, 30″, Africa | hydrosheds.org | 48 MB |
-| Natural Earth 1:10m lakes (Lake Volta), public domain | naturalearthdata.com | 2 MB |
+## 3. Prepare a basin
 
-The script needs only numpy, scipy and two small readers, `tifffile` and `pyshp` (`requirements-prep.txt`). It uses xarray, netCDF4 and rasterio if they are installed, but doesn't need them.
+**One-time downloads.**
+* Run **`download_data.bat`** once. It fetches the Africa-wide HydroSHEDS DEM (48 MB) and the Natural Earth lakes (2 MB) that every basin is built from, into `data\raw`. It also builds an example dataset for the Volta (see Appendix A); you can ignore that. If a download stops, run the file again: finished files are kept and the large files resume.
+* In step 1, click **Download basin outlines**. This fetches HydroSHEDS HydroBASINS Africa (`hybas_af_lev01-12_v1c.zip`), resumably, and keeps levels 2–5 as light outlines for the map (`data\basins`).
 
-**The basin is traced from the DEM.** Check the build report: the basin area should be about 400,000 km², and the gauge areas should be close to the published GRDC values (Bamboi 134,200, Nawuni 92,950, Senchi 394,100 km²). If they aren't, pass a basin polygon with `--basin-mask`, for example HydroBASINS exported to GeoJSON.
+**Then, for each basin** (step 1 lists the basins you have already prepared at the top; click one to open it):
 
-**Observed discharge** is not public domain for the Volta gauges.
-* The open records end before CHIRPS starts in 1981:
-  * RivDIS/PANGAEA (CC BY 3.0): Bamboi 1950–1974.
-  * Dai & Trenberth (CC BY 4.0): Senchi 1936–1984, regulated by Akosombo from 1964.
-* For calibration, request the stations from the GRDC Data Portal (free for research; the link arrives by email): Bamboi 1531100, Nawuni 1531450, Sabari 1531800 and Senchi 1531700. You can also ask the Ghana Hydrological Authority or the Volta Basin Authority.
-* **Open records (no account needed):** **Data tab → Find open gauge records** uses ADHI, the African Database of Hydrometric Indices (Tramblay et al., 2021, CC BY 4.0, https://doi.org/10.23708/LXGXQ9).
-  * It has monthly mean discharge for 1,466 African stations.
-  * For the Volta it covers Nawuni (1981–2007, 271 months), Saboba (249 months), the Black Volta above Bui dam (204 months, close to Bamboi), Dapola, Porga, Pwalagu and others. Records mostly end around 2007; Senchi and Bamboi themselves stop in the 1970s.
-  * The app downloads about 7 MB once, into `data\raw\adhi`. It snaps each station in the open basin to the model's river network, and accepts it only if the catchment areas agree within 25 %.
-  * For each station you choose: add it as a new gauge, use it as records for an existing gauge, or skip it. A station is offered for an existing gauge when it has the same name (catchment within 15 %) or lies within a few cells with a catchment within 10 %.
-  * Selected by default: stations with at least 7 years of records in the model period and a catchment of at least 2 % of the basin.
-  * Not selected: reservoir records (volumes in Mm³, "barrage"), the second copy of a station listed twice (SIEREM and GRDC), and stations on the same river as a chosen gauge with nearly the same catchment (within 15 %), since each gauge becomes a calibration zone. Every skipped station shows the reason, and you can still pick it.
-  * For the Volta, the defaults keep about a dozen gauges. Bui, Nawuni and Saboba become records for the configured Bamboi, Nawuni and Saboba gauges.
-  * Adding stations rewrites the dataset with the new gauges and records. Because gauges define the calibration zones, any per-sub-basin values are reset; whole-basin values are kept.
-  * Calibration and validation periods then follow the records: the years where at least a quarter of the measured gauges report are split about 60/40, and the Calibrate tab shows the result. Calibration stops with a clear message if no gauge has 24 months of records in the calibration period.
-* Then add it in the app: **Data tab → Add observed discharge**. It accepts the CSV below or a GRDC export file as downloaded (one station per file; pick the gauge from the list if the station name doesn't match). The records are saved into the dataset and the model reruns, so fit scores and calibration become available. You can also rebuild with `--qobs your_file.csv`.
-
-**Discharge CSV:** a `date` column (`YYYY-MM` or `YYYY-MM-DD`) and one column per gauge, named as in the config (Bamboi, Nawuni, Saboba, Senchi…), in m³/s. Daily data are averaged to months, and a month is kept only if at least 80 % of its days are present.
-
-```csv
-date,Bamboi,Nawuni,Saboba,Senchi (below Akosombo)
-1983-01-01,45.2,12.1,3.4,
-...
-```
-
-Manual commands, with other options:
-
-```bat
-python prep\prep_volta.py download               rem resumable
-python prep\prep_volta.py build --qobs D:\data\volta_discharge.csv
-python prep\prep_volta.py build --basin-mask D:\gis\volta.geojson --res 0.1 --start 1991-01 --end 2020-12
-python prep\prep_volta.py check
-```
-
-## 3b. Any river basin in Africa (HydroBASINS levels 2–5)
-
-Open the **Basins** tab in the app.
-
-1. **First time only:** click **Download basin outlines**. This fetches HydroSHEDS HydroBASINS Africa (`hybas_af_lev01-12_v1c.zip`). The download resumes if it stops. The app keeps levels 2–5 and makes light outlines for the map (`data\basins`).
-2. **Pick the level** with the slider. Level 2 gives whole river systems; level 5 gives tributary catchments.
-3. **Click a basin.** With *Include everything upstream* ticked, the catchment is that unit plus every unit draining into it (HydroBASINS `NEXT_DOWN`). The panel shows the area, the model grid and the download size.
-4. **Prepare and open.** The app:
+1. **Pick the level** with the slider. Level 2 gives whole river systems; level 5 gives tributary catchments.
+2. **Click a basin.** With *Include everything upstream* ticked, the catchment is that unit plus every unit draining into it (HydroBASINS `NEXT_DOWN`). The panel shows the area, the model grid and the download size.
+3. **Prepare and open.** The app:
    * downloads CHIRPS and TerraClimate for that basin's box only;
-   * builds the model, using the Africa DEM and Natural Earth lakes from `download_data.bat`;
+   * builds the model from the Africa DEM and lakes;
    * zooms to the basin and opens its dashboard.
 
    Prepared basins are listed in the tab and open instantly next time.
 
 How a basin is set up:
 * **Grid size:** the model resolution is chosen so the basin has at most about 20,000 cells: 0.05° for basins up to about 600,000 km², then 0.1°, 0.25° or 0.5°. For grids coarser than 0.05°, the IRI Data Library regrids CHIRPS on the server, so even the Nile or Congo download only tens of MB.
-* **Parameter zones** are the HydroBASINS units inside the catchment. A single unit is split into its next-level units. The Sub-basins tab lists them by Pfafstetter code.
+* **Parameter zones** are the HydroBASINS units inside the catchment. A single unit is split into its next-level units. The Sub-basins view lists them by Pfafstetter code. Once gauges are added, each gauge's incremental catchment becomes a zone instead.
 * **Outlet:** found automatically, as the edge cell that drains the most area. Inland-draining basins are routed to their lowest edge point.
-* **No gauge data:** these basins have no observed discharge, so the hydrograph shows simulated outflow and calibration is disabled until discharge records are added.
+* **Lakes and reservoirs** come from Natural Earth; their cells evaporate at kw · PET.
+* **Before gauge data are added**, the hydrograph shows simulated outflow at the outlet and calibration is disabled.
 
 Command line, for the same steps:
 
@@ -134,7 +91,28 @@ python prep\basin_data.py prepare --level 3 --id 1030022420
 
 **Where basin rainfall comes from.** CHIRPS is first requested from the IRI Data Library in chunks of up to three years, each answered in seconds. IRI has been throttling heavy traffic since it started requiring sign-in for its web pages; data downloads themselves still need no account. If a chunk gets no answer within 45 seconds, preparation switches to the Climate Hazards Center's cloud-optimized GeoTIFFs (`data.chc.ucsb.edu/products/CHIRPS-2.0/global_monthly/cogs`). No sign-in is needed there: the app reads only the 512-pixel tiles that cover the basin, about 0.5–1 MB per tile per month, using several parallel connections. Tiles are kept in `data\raw\chirps_cog`, so neighbouring basins and later runs reuse them. The plan shows that fallback size before you start, and **Details** under the progress bar lists every step.
 
-## 3c. Climate scenarios
+## 3a. Observed discharge (step 2, Gauges)
+
+**Open records, no account needed: Find open gauge records.** This uses ADHI, the African Database of Hydrometric Indices (Tramblay et al., 2021, CC BY 4.0, https://doi.org/10.23708/LXGXQ9).
+* It has monthly mean discharge for 1,466 African stations, mostly up to about 2007. A month is kept when at most 6 days are missing.
+* The app downloads about 7 MB once, into `data\raw\adhi`. It snaps each station in the open basin to the model's river network, and accepts it only if the catchment areas agree within 25 %.
+* For each station you choose: add it as a new gauge, use it as records for an existing gauge, or skip it. A station is offered for an existing gauge when it has the same name (catchment within 15 %) or lies within a few cells with a catchment within 10 %.
+* Selected by default: stations with at least 7 years of records in the model period and a catchment of at least 2 % of the basin (and at least 1,000 km²).
+* Not selected: reservoir records (volumes in Mm³, "barrage", "retenue"), the second copy of a station listed twice (SIEREM and GRDC), and stations on the same river as a chosen gauge with nearly the same catchment (within 15 %), since each gauge becomes a calibration zone. Every skipped station shows the reason, and you can still pick it.
+* Adding stations rewrites the dataset with the new gauges and records. Because gauges define the calibration zones, any per-sub-basin values are reset; whole-basin values are kept.
+* Calibration and validation periods then follow the records: the years where at least a quarter of the measured gauges report are split about 60/40, and the Calibrate step shows the result. Calibration stops with a clear message if no gauge has 24 months of records in the calibration period.
+
+**Other records: Observed discharge from a file.** Accepts a GRDC export as downloaded (one station per file; pick the gauge if the name doesn't match) or a CSV. GRDC data are free for research from the GRDC Data Portal; national hydrological services and river basin organisations hold the most recent records. The records are saved into the dataset and the model reruns, so fit scores and calibration become available.
+
+**Discharge CSV:** a `date` column (`YYYY-MM` or `YYYY-MM-DD`) and one column per gauge, named as the gauges in the app, in m³/s. Daily data are averaged to months, and a month is kept only if at least 80 % of its days are present.
+
+```csv
+date,Gauge A,Gauge B
+1983-01-01,45.2,12.1
+...
+```
+
+## 3b. Climate scenarios
 
 The **Scenarios** tab reruns the current model with its current parameters under a simple change in climate, then compares the result with the current run:
 
@@ -153,13 +131,15 @@ The output covers:
 * the change at each gauge;
 * the rainfall sensitivity of flow, when only rainfall changes: % change in flow per 1 % change in rainfall.
 
-**Monthly flows (CSV)** exports the outlet and gauge series for both runs. On the demo Volta, 10 % less rain lowers outlet flow by about 35 %, and adding 2 °C of warming makes it about 40 %. Semi-arid basins amplify rainfall changes like this.
+**Monthly flows (CSV)** exports the outlet and gauge series for both runs. On the demo basin, 10 % less rain lowers outlet flow by about 35 %, and adding 2 °C of warming makes it about 40 %. Semi-arid basins amplify rainfall changes like this.
 
 These are "delta change" scenarios: the observed 1981–2023 climate shifted uniformly. Changes in rainfall timing or in the number of dry spells are not represented. For projections, the deltas can be taken from climate model ensembles (for example CMIP6 changes for West Africa).
 
-**Save as run** keeps the scenario as a saved run (section 3d), so it can be compared with any other run on the hydrograph.
+**Save as run** keeps the scenario as a saved run (section 3c), so it can be compared with any other run on the hydrograph.
 
-## 3d. Using the interface
+## 3c. Using the interface
+
+**Panels and theme.** Drag the dividers between the three panels to resize them; the widths are kept for each layout (Data, Map and Chart focus). Double-click a divider to go back to the layout's default widths. With the keyboard, focus a divider and use the arrow keys. The dark/light button also darkens the map: light basemaps (Esri topographic, OpenStreetMap, OpenTopoMap) are shown in dark tones, the grey basemap switches to its dark version, and satellite imagery is left unchanged.
 
 **Workflow steps (left).** The left tabs are numbered in the order the work is done: **1 Basin**, **2 Gauges** (observed records), **3 Model** (model choice and parameters), **4 Calibrate**. Each step shows a short status, such as "12/20 with data", "abcd, edited" or "calibrated 14:20", and a green tick once it is done.
 
@@ -225,17 +205,17 @@ ETo = 0.0013 · 0.408 · Ra · (Tavg + 17.0) · (Tmax − Tmin − 0.0123 P)^0.7
 * Runoff is converted to m³/s and accumulated down the D8 network in topological order.
 * All runoff is assumed to reach the gauge within the month.
 * Lake cells add P − kw·ETo to the flow passing through them. Flow can't go below zero, and evaporation that can't be supplied is reported.
-* The optional linear reservoir represents channel and floodplain storage (the White Volta floodplains, for example).
+* The optional linear reservoir represents channel and floodplain storage (large floodplains and wetlands, for example).
 
 **Calibration.**
 * Gauges are processed upstream first. Each gauge's incremental zone gets its own a, b, c, d (and kc if you choose).
 * The upstream gauges' simulated flows are injected as inflow, so each trial only runs the zone's own cells. This is exact, and it is checked in the tests.
-* Objectives: KGE, NSE, log-NSE, or ½ KGE + ½ log-NSE. Calibration and validation periods default to 1983–2005 and 2006–2023 (`config\volta.json`).
+* Objectives: KGE, NSE, log-NSE, or ½ KGE + ½ log-NSE. Calibration and validation periods follow the gauge records (section 3a); without records they default to 1983–2005 and 2006–2023 (`config\volta.json`).
 
-**Choosing the water-balance model.** The Parameters tab has a model picker:
+**Choosing the water-balance model.** Step 3, Model, has a model picker:
 
 * **abcd** (default): the model described above.
-* **NAM (monthly):** the DHI NAM structure adapted from `models/NAM_Model-master` to a monthly step, run in every cell. It has a surface store (Umax), a root zone (Lmax), overland flow (CQOF, TOF), interflow (CKIF, TIF), recharge (TG) and a groundwater store draining as baseflow (CKBF), plus the same PET multiplier kc.
+* **NAM (monthly):** the DHI NAM structure (Nielsen & Hansen, 1973) adapted from `models/NAM_Model-master` to a monthly step, run in every cell. It has a surface store (Umax), a root zone (Lmax), overland flow (CQOF, TOF), interflow (CKIF, TIF), recharge (TG) and a groundwater store draining as baseflow (CKBF), plus the same PET multiplier kc.
   * Time constants are in months.
   * CK12 (routing of the fast flows) is dropped, because those flows reach the river within the month.
   * Snow is left out. In the original code it also double-counted rain between 0 °C and the snow threshold.
@@ -245,10 +225,10 @@ Each model keeps its own parameter set, so switching back and forth doesn't lose
 
 **Compare with…** on the Hydrograph tab runs the other model with its own last parameters. It draws that model as a dashed line and adds a table of KGE, NSE, bias and mean flow for both models. To add another model, give it a parameter list and a run function in `hydro/models.py`.
 
-NumPy runs NAM on the 13,000-cell Volta in about 2 seconds. With numba (`python -m pip install numba`) it takes well under a second, and calibration is about 10 times faster.
+NumPy runs NAM on a 13,000-cell basin (for example about 400,000 km² at 0.05°) in about 2 seconds. With numba (`python -m pip install numba`) it takes well under a second, and calibration is about 10 times faster.
 
 **Known limitations**
-* Simulated flows are **naturalized**. Akosombo, Kpong, Bui, Bagré, Kompienga and small reservoirs are not operated in the model, so compare Senchi with naturalized or pre-1964 flows, or judge it with care.
+* Simulated flows are **naturalized**. Dams and reservoirs are not operated in the model (their lakes only evaporate), so gauges below large dams should be compared with naturalized or pre-dam flows, or judged with care.
 * Monthly steps with no explicit wetland storage. Use `k_route` or calibrate per zone to compensate.
 * CHIRPS and TerraClimate have their own biases. kc can absorb a systematic PET bias.
 * One parameter set per zone. Finer regionalization (by soil or land cover) would need parameter grids, which the model already accepts internally as per-cell arrays.
@@ -262,9 +242,10 @@ hydro/      model core: grid, pet (Modified Hargreaves), abcd and nam (monthly N
             geo (shapefiles, rasterising), basins (HydroBASINS catalogue, upstream tracing)
 backend/    FastAPI app (REST API + serves the front end)
 frontend/   index.html, app.js, styles.css, vendor/ (Leaflet 1.9.4, Chart.js 4.4.1, Archivo font; works offline)
-prep/       prep_volta.py: CHIRPS/TerraClimate/DEM/lakes download, regridding, basin, gauges -> data/volta.npz
-            basin_data.py: HydroBASINS catalogue and on-demand datasets for any African basin
-config/     volta.json: bbox, outlet, gauges, periods
+prep/       basin_data.py: HydroBASINS catalogue and on-demand datasets for any African basin
+            chc_cog.py: CHIRPS fallback from the CHC cloud-optimized GeoTIFFs; adhi.py: open ADHI gauge records
+            prep_volta.py: shared download, regridding and DEM/lake helpers, and the Volta example build (Appendix A)
+config/     volta.json: default periods and settings, and the Volta example's box, outlet and gauges
 tests/      pytest suite (PET, abcd balance, routing, calibration, API, prep end-to-end with fixtures)
 ```
 
@@ -312,9 +293,33 @@ python -m pytest
 
 * Droogers, P. & Allen, R.G. (2002). Estimating reference evapotranspiration under inaccurate data conditions. *Irrigation and Drainage Systems* 16, 33–45.
 * Thomas, H.A. (1981). Improved methods for national water assessment. USGS. Alley, W.M. (1984). *Water Resources Research* 20(8).
+* Nielsen, S.A. & Hansen, E. (1973). Numerical simulation of the rainfall-runoff process on a daily basis. *Nordic Hydrology* 4(3), 171–190.
+* DHI (2017). MIKE 11: A modelling system for rivers and channels. Reference manual, NAM section. DHI, Hørsholm.
 * Funk, C. et al. (2015). The climate hazards infrared precipitation with stations (CHIRPS). *Scientific Data* 2, 150066.
 * Abatzoglou, J.T. et al. (2018). TerraClimate. *Scientific Data* 5, 170191.
 * Allen, R.G. et al. (1998). FAO Irrigation and Drainage Paper 56.
 * Barnes, R., Lehman, C., Mulla, D. (2014). Priority-flood. *Computers & Geosciences* 62, 117–127.
 * Tramblay, Y. et al. (2021). ADHI: the African Database of Hydrometric Indices (1950–2018). *Earth System Science Data* 13, 1547–1560.
 * Gupta, H.V. et al. (2009). Decomposition of the MSE and NSE (KGE). *Journal of Hydrology* 377, 80–91.
+
+## Appendix A. The Volta example dataset
+
+`download_data.bat` builds `data\volta.npz`, a ready-made example for the Volta Basin (about 400,000 km², 0.05°), with its own data box and four configured gauges (`config\volta.json`). It is listed in step 1 under **Prepared basins** as "Volta (example)", or start the app with `CBHM_AUTOLOAD=volta.npz`.
+
+| Data | Source | Size |
+|---|---|---|
+| CHIRPS v2.0 monthly rainfall, 0.05° | IRI Data Library subset of the Volta box | about 60 MB |
+| TerraClimate monthly Tmax and Tmin | University of Idaho THREDDS subsets | about 45 MB each |
+| HydroSHEDS v1 void-filled DEM, 30″, Africa | hydrosheds.org | 48 MB |
+| Natural Earth 1:10m lakes, public domain | naturalearthdata.com | 2 MB |
+
+* **Check the build report:** the basin area should be about 400,000 km², and the gauge areas close to the published GRDC values (Bamboi 134,200, Nawuni 92,950, Senchi 394,100 km²). If they aren't, pass a basin polygon with `--basin-mask`.
+* **Discharge:** GRDC stations Bamboi 1531100, Nawuni 1531450, Sabari 1531800 and Senchi 1531700 (free for research), or the Ghana Hydrological Authority and the Volta Basin Authority. In ADHI, the defaults keep about a dozen Volta gauges, including Nawuni (1981–2007), Saboba and the Black Volta above Bui dam.
+* **Dams:** Akosombo, Kpong, Bui, Bagré and Kompienga are not operated in the model, so judge Senchi (regulated since 1964) with care.
+
+```bat
+python prep\prep_volta.py download               rem resumable
+python prep\prep_volta.py build --qobs D:\data\volta_discharge.csv
+python prep\prep_volta.py build --basin-mask D:\gis\volta.geojson --res 0.1 --start 1991-01 --end 2020-12
+python prep\prep_volta.py check
+```

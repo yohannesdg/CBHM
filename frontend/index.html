@@ -22,7 +22,7 @@
     <svg viewBox="0 0 32 32" aria-hidden="true" class="mark"><path d="M3 6c6 0 7 6 13 6s7-6 13-6M3 14c6 0 7 6 13 6s7-6 13-6M9 22c3 0 4 4 7 4s4-4 7-4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
     <div>
       <h1>Basin water balance</h1>
-      <p id="subtitle">Distributed monthly model with abcd soil water and Modified Hargreaves PET</p>
+      <p id="subtitle">Distributed monthly water balance for African river basins</p>
     </div>
   </div>
   <div class="topbar-right">
@@ -58,6 +58,8 @@
 </header>
 
 <main class="layout">
+  <div class="gutter" id="gutL" role="separator" aria-orientation="vertical" aria-label="Resize the side panel" tabindex="0" title="Drag to resize. Double-click to reset."></div>
+  <div class="gutter" id="gutR" role="separator" aria-orientation="vertical" aria-label="Resize the results panel" tabindex="0" title="Drag to resize. Double-click to reset."></div>
   <!-- ======================= controls ======================= -->
   <aside class="controls">
     <nav class="tabs steps" role="tablist" aria-label="Workflow">
@@ -68,14 +70,16 @@
     </nav>
 
     <section class="tabpanel" id="tab-basins" hidden>
-      <p class="hint">Pick any river basin in Africa from the HydroSHEDS HydroBASINS outlines. The model downloads rainfall and temperature for that basin and opens its dashboard.</p>
+      <h3 class="first">Prepared basins</h3>
+      <div id="preparedList" class="prepared"></div>
+      <h3>New basin</h3>
       <div id="catalogMissing" hidden>
         <p class="hint">The basin outlines (HydroBASINS Africa) haven't been downloaded yet. This is a one-time download; it resumes if the connection drops.</p>
         <button class="btn primary" id="catalogBuildBtn">Download basin outlines</button>
       </div>
       <div id="catalogReady" hidden>
-        <label class="field level-field" for="levelSlider"><span>Sub-basin level <b id="levelOut">3</b></span>
-          <input type="range" id="levelSlider" min="2" max="5" step="1" value="3" aria-describedby="levelHint">
+        <label class="field level-field" for="levelSlider"><span>Sub-basin level <b id="levelOut">2</b></span>
+          <input type="range" id="levelSlider" min="2" max="5" step="1" value="2" aria-describedby="levelHint">
           <span class="ticks4" aria-hidden="true"><span>2</span><span>3</span><span>4</span><span>5</span></span>
           <span class="ticks4 sub" aria-hidden="true"><span>Largest</span><span></span><span></span><span>Smallest</span></span>
         </label>
@@ -86,8 +90,6 @@
       <div id="jobBox" class="progress" hidden><div class="bar"></div><p class="jobmsg"></p>
         <details class="joblog"><summary>Details</summary><pre id="jobLog"></pre></details>
         <button class="btn ghost" id="jobCancelBtn" hidden>Cancel</button></div>
-      <h3>Prepared basins</h3>
-      <div id="preparedList" class="prepared"></div>
     </section>
 
     <section class="tabpanel" id="tab-params">
@@ -161,13 +163,13 @@
       <label class="field"><span>Dataset</span><select id="datasetSelect"></select></label>
       <div class="row"><button class="btn" id="loadBtn">Load dataset</button></div>
       <h3>Demo basin</h3>
-      <p class="hint">Builds a synthetic Volta-shaped basin with 1981–2022 forcing and gauge records, so you can try the tools before the real data is ready.</p>
+      <p class="hint">Builds a synthetic test basin with 1981–2022 forcing and made-up gauge records, so you can try the tools before preparing a real basin.</p>
       <div class="row">
         <button class="btn" data-synth="0.05">Build demo at 0.05°</button>
         <button class="btn ghost" data-synth="0.1">at 0.1°</button>
       </div>
-      <h3>Prepared dataset</h3>
-      <p class="hint">Run <code>python prep/prep_volta.py all</code> to build <code>data/volta.npz</code> from CHIRPS, TerraClimate and your DEM, then load it here or upload the file.</p>
+      <h3>Dataset file</h3>
+      <p class="hint">Basins are prepared in step 1. A dataset file (<code>.npz</code>) prepared on another computer can be uploaded here.</p>
       <label class="btn ghost file"><input type="file" id="uploadInput" accept=".npz">Upload .npz</label>
       <h3>Open gauge records (ADHI)</h3>
       <p class="hint">Monthly discharge for 1,466 African gauging stations from the African Database of Hydrometric Indices (Tramblay et al., 2021, CC BY 4.0). Downloaded once, about 7 MB. Stations inside this basin are matched to the model's rivers by location and catchment area.</p>
@@ -347,16 +349,6 @@
 </main>
 
 <div id="toast" role="status" aria-live="polite"></div>
-<div id="empty" class="empty" hidden>
-  <div>
-    <h2>No dataset loaded</h2>
-    <p>Build the demo basin to explore the model now, or prepare the real Volta dataset with <code>prep/prep_volta.py</code>.</p>
-    <div class="row" style="justify-content:center">
-      <button class="btn primary" id="emptyBasinsBtn">Pick an African basin</button>
-      <button class="btn" data-synth="0.05">Build demo basin</button>
-    </div>
-  </div>
-</div>
 
 <script src="vendor/leaflet/leaflet.js"></script>
 <script src="vendor/chart.umd.js"></script>

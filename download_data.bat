@@ -1,13 +1,14 @@
 @echo off
 setlocal
 REM ---------------------------------------------------------------------------
-REM  Download the public Volta data and build data\volta.npz for the model.
+REM  One-time download of the Africa-wide DEM and lakes that every basin is
+REM  built from, plus the Volta example dataset (data\volta.npz, README Appendix A).
 REM
 REM  Downloads (into data\raw, resumable - just run this file again if it stops):
+REM    HydroSHEDS v1 void-filled DEM 30 arc-sec, Africa     hydrosheds.org     48 MB
+REM    Natural Earth 1:10m lakes and reservoirs             naturalearthdata   2 MB
 REM    CHIRPS v2.0 monthly rainfall 0.05 deg, Volta box    IRI Data Library   ~60 MB
 REM    TerraClimate monthly Tmax and Tmin, Volta box       Univ. of Idaho     ~45 MB each
-REM    HydroSHEDS v1 void-filled DEM 30 arc-sec, Africa     hydrosheds.org     48 MB
-REM    Natural Earth 1:10m lakes (for Lake Volta)           naturalearthdata   2 MB
 REM  Python packages: tifffile + pyshp (well under 1 MB)
 REM ---------------------------------------------------------------------------
 cd /d "%~dp0"
@@ -47,7 +48,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo === 3/3  Building data\volta.npz ======================================
+echo === 3/3  Building the Volta example, data\volta.npz ==================
 "%PY%" prep\prep_volta.py build > "%LOG%" 2>&1
 set "RC=%errorlevel%"
 type "%LOG%"
@@ -58,8 +59,9 @@ if not "%RC%"=="0" (
 )
 
 echo.
-echo Done. Restart the app (close its window, then run run_app.bat): it opens the real
-echo Volta dataset automatically. The build report above is saved in download_log.txt
+echo Done. The Africa DEM and lakes are ready, so any basin can now be prepared in
+echo step 1 of the app. The Volta example is listed under Prepared basins.
+echo The build report above is saved in download_log.txt
 echo.
 pause
 exit /b 0

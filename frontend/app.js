@@ -1,4 +1,4 @@
-/* Volta water balance: front end. Talks to the FastAPI backend under /api. */
+/* CBHM, distributed water balance for African basins: front end. Talks to the FastAPI backend under /api. */
 "use strict";
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -14,7 +14,7 @@ const S = {
   meta: null, res: null, params: null, zone: "global", layer: "runoff", mode: "annual",
   t: 0, month: 8, gauge: 0, range: "all", runId: 0, cell: null, playing: null, calTimer: null,
   grid: null, statics: {}, zones: null, history: [], pendingSnap: false, rtab: "hydro", opacity: 0.8,
-  browse: false, level: 3, catLayer: null, catData: {}, pick: null, jobTimer: null, unit: "month",
+  browse: false, level: 2, catLayer: null, catData: {}, pick: null, jobTimer: null, unit: "month",
   cmpSel: "", runs: [], calAt: null, sub: { flows: "hydro", balance: "partition" },
 };
 // Results are grouped; each group shows its views as sub-tabs
@@ -42,7 +42,7 @@ const PARAM_UI = {
   tg: { name: "Recharge threshold", tip: "How full the root zone must be before water recharges groundwater." },
   ckbf: { name: "Baseflow time", unit: "months", tip: "How slowly groundwater drains to rivers. Longer: smoother hydrograph and dry-season flow that lasts longer." },
   kc: { name: "PET multiplier", tip: "Scales the Modified Hargreaves potential evaporation. Above 1 raises evaporation demand everywhere in the zone." },
-  kw: { name: "Lake evaporation factor", tip: "Evaporation from open water such as Lake Volta, as a multiple of potential evaporation." },
+  kw: { name: "Lake evaporation factor", tip: "Evaporation from lakes and reservoirs, as a multiple of potential evaporation." },
   k_route: { name: "Channel delay", unit: "months", tip: "Holds water back in rivers and floodplains before it reaches the gauges. 0 means no delay." },
 };
 const FIT_COLORS = { good: "#3f8f4e", fair: "#c99a2e", poor: "#c0533b", none: "#9aa5a0" };
@@ -100,7 +100,7 @@ const ZONE_COLORS = ["#9aa5a0", "#3e7f9a", "#c98a2b", "#5e7d3a", "#8a5a8f", "#b4
 let map, overlay, gaugeLayer, cellMarker;
 // Background maps that need no API key. Esri first: it serves any referrer, including localhost.
 const BASEMAPS = [
-  { name: "Esri topographic", url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
+  { name: "Esri topographic", invert: true, url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
     attribution: "Tiles &copy; Esri, HERE, Garmin, USGS, NGA, OpenStreetMap contributors" },
   { name: "Esri light grey", url: "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",
     attribution: "Tiles &copy; Esri, HERE, Garmin, OpenStreetMap contributors", maxZoom: 16 },
@@ -108,14 +108,16 @@ const BASEMAPS = [
     attribution: "Tiles &copy; Esri, HERE, Garmin, OpenStreetMap contributors", maxZoom: 16 },
   { name: "Esri satellite", url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
     attribution: "Tiles &copy; Esri, Maxar, Earthstar Geographics" },
-  { name: "OpenStreetMap", url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+  { name: "OpenStreetMap", invert: true, url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
     attribution: "&copy; OpenStreetMap contributors" },
-  { name: "OpenTopoMap", url: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", subdomains: "abc", maxZoom: 15,
+  { name: "OpenTopoMap", invert: true, url: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", subdomains: "abc", maxZoom: 15,
     attribution: "&copy; OpenStreetMap contributors, SRTM | &copy; OpenTopoMap (CC-BY-SA)" },
 ];
 
 function makeBase(b) {
-  const layer = L.tileLayer(b.url, { attribution: b.attribution, subdomains: b.subdomains || "abc", maxZoom: b.maxZoom || 17 });
+  // light basemaps get a dark rendering in dark mode (CSS filter on .base-invert); satellite is left as it is
+  const layer = L.tileLayer(b.url, { attribution: b.attribution, subdomains: b.subdomains || "abc", maxZoom: b.maxZoom || 17,
+    className: b.invert ? "base-invert" : "" });
   // if a service refuses every tile, move on to the next one automatically
   let loaded = 0, failed = 0;
   layer.on("tileload", () => { loaded++; });
@@ -1072,14 +1074,26 @@ async function showLevel(lv) {
     onEachFeature: (f, layer) => {
       const p = f.properties;
       layer.bindTooltip(`PFAF ${p.pfaf}<br>${fmt(p.sub_area)} km² unit, ${fmt(p.up_area)} km² with upstream`, { sticky: true, className: "basin-tip" });
-      layer.on("mouseover", () => { if (!isPicked(p.id)) layer.setStyle({ fillOpacity: 0.35, weight: 1.6 }); });
+      layer.on("mouseover", () => { if (!isPicked(p.id)) layer.setStyle({ fillOpacity: 0.3, weight: 2 }); });
       layer.on("mouseout", () => { if (!isPicked(p.id)) layer.setStyle(baseStyle()); });
       layer.on("click", (e) => { L.DomEvent.stopPropagation(e); pickBasin(p); });
     },
   }).addTo(map);
   if (S.pick && S.pick.level === lv) styleSelection(); else { S.pick = null; $("#basinPick").innerHTML = '<p class="hint">Click a basin on the map.</p>'; }
 }
-const baseStyle = () => ({ color: css("--water-deep"), weight: 0.8, fillColor: css("--water"), fillOpacity: 0.08 });
+const baseStyle = () => ({ color: css("--basin-line"), weight: 1.2, fillColor: css("--basin-line"), fillOpacity: 0.07 });
+
+// First view with no basin loaded: the basin browser over Africa at level 2, map focus
+function startEmpty() {
+  document.body.classList.add("no-data");
+  placeGutters();
+  S.meta = null; S.res = null;
+  setLayout("map");
+  if (S.level !== 2) { S.level = 2; }
+  $("#levelSlider").value = S.level; $("#levelOut").textContent = S.level;
+  drawSteps();
+  openStep("basins");
+}
 function upstreamIds(lv, id) {
   const kids = S.catData[lv].kids, out = [], stack = [id];
   while (stack.length) { const h = stack.pop(); out.push(h); (kids[h] || []).forEach((k) => stack.push(k)); }
@@ -1193,7 +1207,7 @@ async function refreshPrepared() {
   let st;
   try { st = await api("/api/status"); } catch (e) { return; }
   const list = st.datasets.filter((d) => !d.startsWith("synthetic"));
-  const label = (d) => d === "volta.npz" ? "Volta (from download_data.bat)" : d.replace(/^basin_L(\d)_(\d+)(_unit)?(?:_([\d.]+))?\.npz$/, (m, lv, id, unit, res) => `Level ${lv} basin ${id}${unit ? " (unit only)" : ""}${res ? `, ${res}°` : ""}`);
+  const label = (d) => d === "volta.npz" ? "Volta (example)" : d.replace(/^basin_L(\d)_(\d+)(_unit)?(?:_([\d.]+))?\.npz$/, (m, lv, id, unit, res) => `Level ${lv} basin ${id}${unit ? " (unit only)" : ""}${res ? `, ${res}°` : ""}`);
   $("#preparedList").innerHTML = list.length
     ? list.map((d) => `<button type="button" data-ds="${d}" aria-current="${d === st.dataset}">${label(d)}</button>`).join("")
     : '<p class="hint">None yet.</p>';
@@ -1569,8 +1583,8 @@ async function withBusy(label, fn) {
 }
 async function loadAll() {
   const st = await refreshDatasets();
-  if (!st.loaded) { $("#empty").hidden = false; return; }
-  $("#empty").hidden = true;
+  if (!st.loaded) { startEmpty(); return; }
+  if (document.body.classList.contains("no-data")) { document.body.classList.remove("no-data"); applySplit(); relayout(); }
   S.meta = await api("/api/meta");
   S.res = await api("/api/results");
   S.params = structuredClone(S.res.params);
@@ -1622,7 +1636,6 @@ function wire() {
   $("#upstreamChk").addEventListener("change", () => { if (S.pick && S.pick.props) pickBasin(S.pick.props); });
   $("#catalogBuildBtn").addEventListener("click", buildCatalog);
   $("#jobCancelBtn").addEventListener("click", () => api("/api/jobs/cancel", { json: {} }).then(() => toast("Stopping after the current step…")));
-  $("#emptyBasinsBtn").addEventListener("click", () => { $("#empty").hidden = true; $$(".tabs button").find((x) => x.dataset.tab === "basins").click(); });
   $("#zoneSelect").addEventListener("change", (e) => {
     S.zone = e.target.value; buildSliders(); drawZoneHighlight();
     if (S.rtab === "subbasins") drawSubbasins();
@@ -1732,6 +1745,7 @@ const store = {
 };
 function relayout() {
   requestAnimationFrame(() => {
+    placeGutters();
     if (map) map.invalidateSize();
     [hydroChart, seasonChart, cellChart, partChart, shareChart].forEach((c) => c && c.resize());
   });
@@ -1739,6 +1753,7 @@ function relayout() {
 function setLayout(name) {
   if (!["data", "map", "charts"].includes(name)) name = "map";
   document.documentElement.dataset.layout = name;
+  applySplit();
   $$("#layoutPick button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.layout === name));
   store.set("volta-layout", name);
   relayout();
@@ -1771,7 +1786,81 @@ function themeChanged() {
   drawBalance(); drawRibbon(); drawGauges();
   if (S.layer && !S.layer.startsWith("static:")) renderMap();
 }
+// ---- draggable dividers between the three panels; widths are remembered per layout
+const SPLIT_KEY = "cbhm-split";
+const isNarrow = () => window.innerWidth < 980;
+function splitGet() { try { return JSON.parse(localStorage.getItem(SPLIT_KEY)) || {}; } catch (_) { return {}; } }
+function splitSet(v) { try { localStorage.setItem(SPLIT_KEY, JSON.stringify(v)); } catch (_) { /* storage blocked */ } }
+function applySplit() {
+  const lay = $(".layout"); if (!lay) return;
+  const w = splitGet()[document.documentElement.dataset.layout];
+  lay.style.gridTemplateColumns = (!isNarrow() && w) ? `${w.c}px minmax(0, 1fr) ${w.r}px` : "";
+  placeGutters();
+}
+function placeGutters() {
+  const lay = $(".layout"), gl = $("#gutL"), gr = $("#gutR");
+  if (!lay || !gl) return;
+  const L0 = lay.getBoundingClientRect().left;
+  gl.hidden = isNarrow();
+  gr.hidden = isNarrow() || document.body.classList.contains("no-data");
+  if (!gl.hidden) gl.style.left = `${$(".controls").getBoundingClientRect().right - L0 - 3}px`;
+  if (!gr.hidden) gr.style.left = `${$(".results").getBoundingClientRect().left - L0 - 3}px`;
+}
+function setSplit(c, r, save) {
+  const lay = $(".layout"), W = lay.getBoundingClientRect().width, MAPMIN = 320;
+  const noRes = document.body.classList.contains("no-data");
+  c = Math.round(Math.max(200, Math.min(c, 640, W - (noRes ? 0 : r) - MAPMIN)));
+  r = Math.round(Math.max(280, Math.min(r, 1100, W - c - MAPMIN)));
+  lay.style.gridTemplateColumns = `${c}px minmax(0, 1fr) ${r}px`;
+  placeGutters();
+  if (map) map.invalidateSize({ pan: false });
+  if (save) { const all = splitGet(); all[document.documentElement.dataset.layout] = { c, r }; splitSet(all); relayout(); }
+}
+function currentSplit() {
+  const c = $(".controls").getBoundingClientRect().width;
+  const cols = getComputedStyle($(".layout")).gridTemplateColumns.split(" ").map(parseFloat);
+  return { c, r: cols.length === 3 ? cols[2] : 400 };
+}
+function initSplitters() {
+  const lay = $(".layout");
+  [["#gutL", "c"], ["#gutR", "r"]].forEach(([sel, side]) => {
+    const g = $(sel);
+    g.addEventListener("pointerdown", (e) => {
+      if (isNarrow()) return;
+      e.preventDefault(); g.setPointerCapture(e.pointerId);
+      document.body.classList.add("resizing"); g.classList.add("active");
+      const rect = lay.getBoundingClientRect(), start = currentSplit();
+      let raf = 0, last = null;
+      const move = (ev) => {
+        last = side === "c" ? { c: ev.clientX - rect.left, r: start.r } : { c: start.c, r: rect.right - ev.clientX };
+        if (!raf) raf = requestAnimationFrame(() => { raf = 0; setSplit(last.c, last.r, false); });
+      };
+      const up = () => {
+        g.removeEventListener("pointermove", move); g.removeEventListener("pointerup", up); g.removeEventListener("pointercancel", up);
+        document.body.classList.remove("resizing"); g.classList.remove("active");
+        if (raf) { cancelAnimationFrame(raf); raf = 0; }
+        const s = last || currentSplit(); setSplit(s.c, s.r, true);
+      };
+      g.addEventListener("pointermove", move); g.addEventListener("pointerup", up); g.addEventListener("pointercancel", up);
+    });
+    g.addEventListener("dblclick", () => {
+      const all = splitGet(); delete all[document.documentElement.dataset.layout]; splitSet(all);
+      applySplit(); relayout();
+    });
+    g.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      e.preventDefault();
+      const s = currentSplit(), d = (e.key === "ArrowRight" ? 1 : -1) * (e.shiftKey ? 60 : 20);
+      if (side === "c") s.c += d; else s.r -= d;
+      setSplit(s.c, s.r, true);
+    });
+  });
+  window.addEventListener("resize", () => { applySplit(); });
+  if (window.ResizeObserver) new ResizeObserver(() => placeGutters()).observe($(".controls"));
+}
+
 function initView() {
+  initSplitters();
   setLayout(store.get("volta-layout") || "map");
   $$("#layoutPick button").forEach((b) => b.addEventListener("click", () => setLayout(b.dataset.layout)));
   $("#themeToggle").addEventListener("click", () => setTheme(isDark() ? "light" : "dark"));

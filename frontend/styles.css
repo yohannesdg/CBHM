@@ -5,8 +5,9 @@
   --ink: #1c2a2e;          /* slate ink */
   --ink-2: #4b5b5f;
   --rule: #c9d1cc;
-  --water: #1f6f8b;        /* Volta blue: simulated */
+  --water: #1f6f8b;        /* water blue: simulated */
   --water-deep: #12475a;
+  --basin-line: #0b3a8f;   /* HydroBASINS outlines in the basin browser */
   --ochre: #c98a2b;        /* harmattan ochre: observed */
   --savanna: #5e7d3a;
   --alert: #a33b2a;
@@ -19,13 +20,13 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --paper: #141c1e; --surface: #1b2528; --ink: #e3e9e6; --ink-2: #9fb0b0; --rule: #33413f;
-    --water: #4fa9c8; --water-deep: #8fd0e6; --ochre: #e0a74d; --savanna: #8db261; --alert: #e07a63;
+    --water: #4fa9c8; --water-deep: #8fd0e6; --basin-line: #5b9dff; --ochre: #e0a74d; --savanna: #8db261; --alert: #e07a63;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --paper: #141c1e; --surface: #1b2528; --ink: #e3e9e6; --ink-2: #9fb0b0; --rule: #33413f;
-  --water: #4fa9c8; --water-deep: #8fd0e6; --ochre: #e0a74d; --savanna: #8db261; --alert: #e07a63;
+  --water: #4fa9c8; --water-deep: #8fd0e6; --basin-line: #5b9dff; --ochre: #e0a74d; --savanna: #8db261; --alert: #e07a63;
   color-scheme: dark;
 }
 
@@ -71,6 +72,7 @@ code { font-size: 12px; background: color-mix(in srgb, var(--rule) 45%, transpar
    medium:  controls | key numbers / map / results (bottom, fixed share of the height)
    narrow:  everything stacked                                                  */
 .layout {
+  position: relative;
   display: grid; height: calc(100vh - 57px);
   grid-template-columns: 300px minmax(0, 1fr) 480px;
   grid-template-rows: minmax(0, 1fr);
@@ -467,3 +469,39 @@ ul.runs .rf { font-size: 11.5px; color: var(--ink-2); }
 ul.runs .ra { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
 ul.runs .ra button[aria-pressed="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
 .rl-edit { font: inherit; font-weight: 600; padding: 2px 5px; border: 1px solid var(--water); border-radius: var(--radius-s); min-width: 0; flex: 1; background: var(--surface); color: var(--ink); }
+
+/* nothing loaded yet: the map takes the results column too */
+body.no-data .results, body.no-data .mapbar, body.no-data .ribbon-wrap { display: none !important; }
+body.no-data .mapcol { grid-column: 2 / -1; grid-row: 1 / -1; }
+
+/* draggable dividers between the panels */
+.gutter { position: absolute; top: 0; bottom: 0; width: 7px; z-index: 1200; cursor: col-resize; touch-action: none; }
+.gutter[hidden] { display: none; }
+.gutter::after { content: ""; position: absolute; top: 0; bottom: 0; left: 3px; width: 1px; background: transparent; transition: background .15s; }
+.gutter:hover::after, .gutter.active::after, .gutter:focus-visible::after { background: var(--water); width: 2px; left: 2.5px; }
+.gutter:focus-visible { outline: none; }
+body.resizing { cursor: col-resize; user-select: none; }
+body.resizing .mapcol, body.resizing .results, body.resizing .controls { pointer-events: none; }
+
+/* basins panel: the list of prepared basins comes first */
+#tab-basins h3.first { margin-top: 0; }
+
+/* map in dark mode: light basemaps are rendered dark, Leaflet controls and tips follow the theme */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .leaflet-tile-pane .base-invert { filter: invert(1) hue-rotate(180deg) brightness(.92) contrast(.9) saturate(.7); }
+}
+:root[data-theme="dark"] .leaflet-tile-pane .base-invert { filter: invert(1) hue-rotate(180deg) brightness(.92) contrast(.9) saturate(.7); }
+.leaflet-bar a, .leaflet-bar a:hover { background: var(--surface); color: var(--ink); border-bottom-color: var(--rule); }
+.leaflet-bar a:hover { background: var(--paper); }
+.leaflet-bar, .leaflet-control-layers { border-color: var(--rule) !important; }
+.leaflet-control-layers, .leaflet-control-layers-expanded { background: var(--surface); color: var(--ink); }
+.leaflet-control-layers-separator { border-top-color: var(--rule); }
+.leaflet-container .leaflet-control-attribution { background: color-mix(in srgb, var(--surface) 80%, transparent); color: var(--ink-2); }
+.leaflet-container .leaflet-control-attribution a { color: var(--water); }
+.leaflet-tooltip.basin-tip { background: var(--surface); color: var(--ink); border-color: var(--rule); }
+.leaflet-tooltip-top.basin-tip::before { border-top-color: var(--surface); }
+.leaflet-tooltip-bottom.basin-tip::before { border-bottom-color: var(--surface); }
+.leaflet-tooltip-left.basin-tip::before { border-left-color: var(--surface); }
+.leaflet-tooltip-right.basin-tip::before { border-right-color: var(--surface); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .leaflet-control-layers-toggle { filter: invert(1) brightness(1.4); } }
+:root[data-theme="dark"] .leaflet-control-layers-toggle { filter: invert(1) brightness(1.4); }

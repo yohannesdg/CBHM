@@ -22,6 +22,10 @@ def test_api_endpoints(tiny, monkeypatch):
     monkeypatch.setattr(appmod, "DATA_DIR", tiny[0])
     with TestClient(appmod.app) as c:
         st = c.get("/api/status").json()
+        assert not st["loaded"] and st["dataset"] is None and "synthetic_tiny.npz" in st["datasets"]   # opens on the basin browser
+        assert c.get("/api/meta").status_code == 409
+        c.post("/api/datasets/load", json={"name": "synthetic_tiny.npz"})
+        st = c.get("/api/status").json()
         assert st["loaded"] and st["dataset"] == "synthetic_tiny.npz"
         meta = c.get("/api/meta").json()
         assert len(meta["dates"]) == 48 and len(meta["gauges"]) == 4

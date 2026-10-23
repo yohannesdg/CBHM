@@ -1,4 +1,4 @@
-"""FastAPI backend for the Volta distributed monthly water-balance model.
+"""FastAPI backend for CBHM, the distributed monthly water-balance model for African river basins.
 
 Run:  uvicorn backend.app:app --port 8000      (from the project root)
 Then open http://localhost:8000
@@ -54,8 +54,13 @@ S = State()
 # ------------------------------------------------------------------------------- helpers
 def _need_model():
     if S.model is None:
-        raise HTTPException(409, "No dataset loaded. Generate the demo or load a prepared dataset first.")
+        raise HTTPException(409, "No basin open. Pick and prepare a basin in step 1, or open a prepared one.")
     return S.model
+
+
+def _stem() -> str:
+    """Short name of the open dataset, for export file names."""
+    return Path(S.name).stem if S.name else "basin"
 
 
 def _need_results():
@@ -149,11 +154,18 @@ def _summary(res):
 
 
 def _startup():
+    """Start with no basin loaded, so the page opens on the basin browser.
+    Set CBHM_AUTOLOAD=1 (or to a dataset file name) to open a prepared basin straight away instead."""
+    import os
     DATA_DIR.mkdir(exist_ok=True)
+    S.__init__()                      # a fresh start: nothing open
+    auto = os.environ.get("CBHM_AUTOLOAD", "").strip()
+    if not auto or auto == "0":
+        return
     files = sorted(DATA_DIR.glob("*.npz"), key=lambda p: p.stat().st_mtime, reverse=True)
     names = [p.name for p in files]
     real = [n for n in names if not n.startswith("synthetic")]
-    pick = "volta.npz" if "volta.npz" in names else (real[0] if real else (names[0] if names else None))
+    pick = auto if auto in names else ("volta.npz" if "volta.npz" in names else (real[0] if real else (names[0] if names else None)))
     if pick:
         try:
             _load(pick)
@@ -167,7 +179,7 @@ async def lifespan(_app):
     yield
 
 
-app = FastAPI(title="Volta Hydrologic Model", version=__version__, lifespan=lifespan)
+app = FastAPI(title="CBHM: African basin water balance", version=__version__, lifespan=lifespan)
 
 
 # ------------------------------------------------------------------------------- datasets
@@ -209,7 +221,7 @@ async def upload_dataset(request: Request, name: str = "uploaded.npz"):
     """Raw file body (no multipart), file name in ?name= ."""
     name = Path(name).name
     if not name.endswith(".npz"):
-        raise HTTPException(400, "Upload a dataset .npz produced by prep/prep_volta.py")
+        raise HTTPException(400, "Upload a dataset .npz prepared by this app (step 1, Basin)")
     (DATA_DIR / name).write_bytes(await request.body())
     _load(name)
     return status()
@@ -671,7 +683,7 @@ def export_gauges():
             r += [float(d.qobs[i, t]), float(res.gauge_sim[i, t])]
         rows.append(r)
     return PlainTextResponse(_csv(header, rows), media_type="text/csv",
-                             headers={"Content-Disposition": "attachment; filename=volta_gauges.csv"})
+                             headers={"Content-Disposition": f"attachment; filename={_stem()}_gauges.csv"})
 
 
 @app.get("/api/export/basin.csv")
@@ -682,7 +694,7 @@ def export_basin():
     header = ["date"] + [f"{k}_{FIELD_UNITS[k].replace('/', 'per').replace(' ', '')}" for k in keys] + ["outlet_q_m3s"]
     rows = [[date] + [b[k][t] for k in keys] + [b["outlet_q"][t]] for t, date in enumerate(S.data.dates)]
     return PlainTextResponse(_csv(header, rows), media_type="text/csv",
-                             headers={"Content-Disposition": "attachment; filename=volta_basin_balance.csv"})
+                             headers={"Content-Disposition": f"attachment; filename={_stem()}_basin_balance.csv"})
 
 
 @app.get("/api/export/annual.csv")
@@ -1024,7 +1036,7 @@ def apply_run(run_id: str):
 
 @app.get("/api/export/params.json")
 def export_params():
-    return JSONResponse(S.params, headers={"Content-Disposition": "attachment; filename=volta_params.json"})
+    return JSONResponse(S.params, headers={"Content-Disposition": f"attachment; filename={_stem()}_params.json"})
 
 
 @app.get("/api/export/map.asc")
@@ -1034,7 +1046,7 @@ def export_map(var: str = "runoff", mode: str = "annual", t: int | None = None, 
     head = (f"ncols {g.ncols}\nnrows {g.nrows}\nxllcorner {g.west}\nyllcorner {g.south}\n"
             f"cellsize {g.res}\nNODATA_value -9999\n")
     body = "\n".join(" ".join("-9999" if not np.isfinite(x) else f"{x:.4f}" for x in row) for row in v)
-    name = f"volta_{var}_{mode}{'' if t is None else '_' + S.data.dates[t]}.asc"
+    name = f"{_stem()}_{var}_{mode}{'' if t is None else '_' + S.data.dates[t]}.asc"
     return PlainTextResponse(head + body + "\n", headers={"Content-Disposition": f"attachment; filename={name}"})
 
 
